@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"protocol"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -97,6 +98,11 @@ func (self *HttpServer) Serve(listener net.Listener) {
 	self.registerEndpoint(p, "post", "/db/:db/users", self.createDbUser)
 	self.registerEndpoint(p, "del", "/db/:db/users/:user", self.deleteDbUser)
 	self.registerEndpoint(p, "post", "/db/:db/users/:user", self.updateDbUser)
+
+	// continuous queries management interface
+	self.registerEndpoint(p, "get", "/db/:db/continuous_queries", self.listDbContinuousQueries)
+	self.registerEndpoint(p, "post", "/db/:db/continuous_queries", self.createDbContinuousQueries)
+	self.registerEndpoint(p, "del", "/db/:db/continuous_queries/:id", self.deleteDbContinuousQueries)
 
 	// healthcheck
 	self.registerEndpoint(p, "get", "/ping", self.ping)
@@ -608,6 +614,10 @@ type User struct {
 	Name string `json:"username"`
 }
 
+type NewContinuousQuery struct {
+	Query string `json:"query"`
+}
+
 func (self *HttpServer) listClusterAdmins(w libhttp.ResponseWriter, r *libhttp.Request) {
 	self.tryAsClusterAdmin(w, r, func(u common.User) (int, interface{}) {
 		names, err := self.userManager.ListClusterAdmins(u)
@@ -891,4 +901,53 @@ func (self *HttpServer) listInterfaces(w libhttp.ResponseWriter, r *libhttp.Requ
 	if len(body) > 0 {
 		w.Write(body)
 	}
+}
+
+func (self *HttpServer) listDbContinuousQueries(w libhttp.ResponseWriter, r *libhttp.Request) {
+	db := r.URL.Query().Get(":db")
+
+	self.tryAsDbUserAndClusterAdmin(w, r, func(u common.User) (int, interface{}) {
+		results, err := self.coordinator.ListContinuousQueries(u, db)
+		if err != nil {
+			return errorToStatusCode(err), err.Error()
+		}
+
+		queries := make([]*coordinator.ContinuousQuery, 0, len(results))
+		for _, result := range results {
+			queries = append(queries, &coordinator.ContinuousQuery{result.Id, result.Query})
+		}
+		return libhttp.StatusOK, queries
+	})
+}
+
+func (self *HttpServer) createDbContinuousQueries(w libhttp.ResponseWriter, r *libhttp.Request) {
+	db := r.URL.Query().Get(":db")
+
+	self.tryAsDbUserAndClusterAdmin(w, r, func(u common.User) (int, interface{}) {
+		var values interface{}
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			return libhttp.StatusInternalServerError, err.Error()
+		}
+		json.Unmarshal(body, &values)
+		query := values.(map[string]interface{})["query"].(string)
+		fmt.Println(query)
+
+		if err := self.coordinator.CreateContinuousQuery(u, db, query); err != nil {
+			return errorToStatusCode(err), err.Error()
+		}
+		return libhttp.StatusOK, nil
+	})
+}
+
+func (self *HttpServer) deleteDbContinuousQueries(w libhttp.ResponseWriter, r *libhttp.Request) {
+	db := r.URL.Query().Get(":db")
+	id, _ := strconv.ParseInt(r.URL.Query().Get(":id"), 10, 64)
+
+	self.tryAsDbUserAndClusterAdmin(w, r, func(u common.User) (int, interface{}) {
+		if err := self.coordinator.DeleteContinuousQuery(u, db, uint32(id)); err != nil {
+			return errorToStatusCode(err), err.Error()
+		}
+		return libhttp.StatusOK, nil
+	})
 }

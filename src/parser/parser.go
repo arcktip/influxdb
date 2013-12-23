@@ -76,6 +76,10 @@ type FromClause struct {
 	Names []*TableName
 }
 
+type IntoClause struct {
+	Target *Value
+}
+
 type GroupByClause struct {
 	FillWithZero bool
 	FillValue    *Value
@@ -139,6 +143,7 @@ type SelectQuery struct {
 	SelectDeleteCommonQuery
 	ColumnNames   []*Value
 	groupByClause *GroupByClause
+	IntoClause    *IntoClause
 	Limit         int
 	Ascending     bool
 }
@@ -215,6 +220,14 @@ func (self *SelectQuery) GetSinglePointQuerySequenceNumber() (int64, error) {
 		return 0, fmt.Errorf("The column sequence_number can only be queried as an integer.")
 	}
 	return sequence_number, nil
+}
+
+func (self *SelectQuery) IsContinuousQuery() bool {
+	return self.GetIntoClause() != nil
+}
+
+func (self *SelectQuery) GetIntoClause() *IntoClause {
+	return self.IntoClause
 }
 
 func (self *SelectDeleteCommonQuery) GetFromClause() *FromClause {
@@ -355,6 +368,15 @@ func GetFromClause(fromClause *C.from_clause) (*FromClause, error) {
 		return nil, err
 	}
 	return &FromClause{FromClauseType(fromClause.from_clause_type), arr}, nil
+}
+
+func GetIntoClause(intoClause *C.into_clause) (*IntoClause, error) {
+	target, err := GetValue(intoClause.target)
+	if err != nil {
+		return nil, err
+	}
+
+	return &IntoClause{target}, nil
 }
 
 func GetWhereCondition(condition *C.condition) (*WhereCondition, error) {
@@ -503,6 +525,7 @@ func parseSelectQuery(queryString string, q *C.select_query) (*SelectQuery, erro
 	if err != nil {
 		return nil, err
 	}
+
 	goQuery := &SelectQuery{
 		SelectDeleteCommonQuery: basicQuery,
 		Limit:     int(limit),
@@ -523,6 +546,12 @@ func parseSelectQuery(queryString string, q *C.select_query) (*SelectQuery, erro
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// get the into clause
+	goQuery.IntoClause, err = GetIntoClause(q.into_clause)
+	if err != nil {
+		return goQuery, err
 	}
 
 	return goQuery, nil

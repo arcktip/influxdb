@@ -26,6 +26,9 @@ type Coordinator interface {
 	ReplicateWrite(request *protocol.Request) error
 	ReplicateDelete(request *protocol.Request) error
 	ReplayReplication(request *protocol.Request, replicationFactor *uint8, owningServerId *uint32, lastSeenSequenceNumber *uint64)
+	DeleteContinuousQuery(user common.User, db string, id uint32) error
+	CreateContinuousQuery(user common.User, db string, query string) error
+	ListContinuousQueries(user common.User, db string) ([]*ContinuousQuery, error)
 }
 
 type UserManager interface {
@@ -59,6 +62,8 @@ type UserManager interface {
 type ClusterConsensus interface {
 	CreateDatabase(name string, replicationFactor uint8) error
 	DropDatabase(name string) error
+	CreateContinuousQuery(db string, query string) error
+	DeleteContinuousQuery(db string, id uint32) error
 	SaveClusterAdminUser(u *clusterAdmin) error
 	SaveDbUser(user *dbUser) error
 	ChangeDbUserPassword(db, username string, hash []byte) error

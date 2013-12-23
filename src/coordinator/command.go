@@ -17,9 +17,49 @@ func init() {
 		&SaveDbUserCommand{},
 		&SaveClusterAdminCommand{},
 		&ChangeDbUserPassword{},
+		&CreateContinuousQueryCommand{},
+		&DeleteContinuousQueryCommand{},
 	} {
 		internalRaftCommands[command.CommandName()] = command
 	}
+}
+
+type CreateContinuousQueryCommand struct {
+	Database string `json:"database"`
+	Query    string `json:"query"`
+}
+
+func NewCreateContinuousQueryCommand(database string, query string) *CreateContinuousQueryCommand {
+	return &CreateContinuousQueryCommand{database, query}
+}
+
+func (c *CreateContinuousQueryCommand) CommandName() string {
+	return "create_cq"
+}
+
+func (c *CreateContinuousQueryCommand) Apply(server raft.Server) (interface{}, error) {
+	config := server.Context().(*ClusterConfiguration)
+	err := config.CreateContinuousQuery(c.Database, c.Query)
+	return nil, err
+}
+
+type DeleteContinuousQueryCommand struct {
+	Database string `json:"database"`
+	Id       uint32 `json:"id"`
+}
+
+func NewDeleteContinuousQueryCommand(database string, id uint32) *DeleteContinuousQueryCommand {
+	return &DeleteContinuousQueryCommand{database, id}
+}
+
+func (c *DeleteContinuousQueryCommand) CommandName() string {
+	return "delete_cq"
+}
+
+func (c *DeleteContinuousQueryCommand) Apply(server raft.Server) (interface{}, error) {
+	config := server.Context().(*ClusterConfiguration)
+	err := config.DeleteContinuousQuery(c.Database, c.Id)
+	return nil, err
 }
 
 type DropDatabaseCommand struct {

@@ -96,10 +96,11 @@ func (self *MockEngine) RunQuery(_ common.User, _ string, query string, localOnl
 }
 
 type MockCoordinator struct {
-	series        []*protocol.Series
-	deleteQueries []*parser.DeleteQuery
-	db            string
-	droppedDb     string
+	series            []*protocol.Series
+	continuousQueries map[string][]*coordinator.ContinuousQuery
+	deleteQueries     []*parser.DeleteQuery
+	db                string
+	droppedDb         string
 }
 
 func (self *MockCoordinator) DistributeQuery(_ common.User, db string, query *parser.SelectQuery, localOnly bool, yield func(*protocol.Series) error) error {
@@ -146,6 +147,21 @@ func (self *MockCoordinator) ReplayReplication(request *protocol.Request, replic
 	return
 }
 
+func (self *MockCoordinator) ListContinuousQueries(_ common.User, db string) ([]*coordinator.ContinuousQuery, error) {
+	return self.continuousQueries[db], nil
+}
+
+func (self *MockCoordinator) CreateContinuousQuery(_ common.User, db string, query string) error {
+	self.continuousQueries[db] = append(self.continuousQueries[db], &coordinator.ContinuousQuery{2, query})
+	return nil
+}
+
+func (self *MockCoordinator) DeleteContinuousQuery(_ common.User, db string, id uint32) error {
+	length := len(self.continuousQueries[db])
+	_, self.continuousQueries[db] = self.continuousQueries[db][length-1], self.continuousQueries[db][:length-1]
+	return nil
+}
+
 func (self *ApiSuite) formatUrl(path string, args ...interface{}) string {
 	path = fmt.Sprintf(path, args...)
 	port := self.listener.Addr().(*net.TCPAddr).Port
@@ -153,7 +169,13 @@ func (self *ApiSuite) formatUrl(path string, args ...interface{}) string {
 }
 
 func (self *ApiSuite) SetUpSuite(c *C) {
-	self.coordinator = &MockCoordinator{}
+	self.coordinator = &MockCoordinator{
+		continuousQueries: map[string][]*coordinator.ContinuousQuery{
+			"db1": []*coordinator.ContinuousQuery{
+				&coordinator.ContinuousQuery{1, "select * from foo into bar;"},
+			},
+		},
+	}
 	self.manager = &MockUserManager{
 		clusterAdmins: []string{"root"},
 		dbUsers:       map[string][]string{"db1": []string{"db_user1"}},
@@ -751,4 +773,71 @@ func (self *ApiSuite) TestBasicAuthentication(c *C) {
 	err = json.Unmarshal(body, &users)
 	c.Assert(err, IsNil)
 	c.Assert(users, DeepEquals, []*coordinator.Database{&coordinator.Database{"db1", 1}, &coordinator.Database{"db2", 1}})
+}
+
+func (self *ApiSuite) TestContinuousQueryOperations(c *C) {
+	// verify current continuous query index
+	url := self.formatUrl("/db/db1/continuous_queries?u=root&p=root")
+	resp, err := libhttp.Get(url)
+	c.Assert(err, IsNil)
+	c.Assert(resp.Header.Get("content-type"), Equals, "application/json")
+	body, err := ioutil.ReadAll(resp.Body)
+	c.Assert(err, IsNil)
+	queries := []*coordinator.ContinuousQuery{}
+	err = json.Unmarshal(body, &queries)
+	c.Assert(err, IsNil)
+	c.Assert(queries, DeepEquals, []*coordinator.ContinuousQuery{
+		&coordinator.ContinuousQuery{1, "select * from foo into bar;"},
+	})
+	resp.Body.Close()
+
+	// add a new continuous query
+	data := `{"query": "select * from quu into qux;"}`
+	url = self.formatUrl("/db/db1/continuous_queries?u=root&p=root")
+	resp, err = libhttp.Post(url, "application/json", bytes.NewBufferString(data))
+	c.Assert(err, IsNil)
+	c.Assert(resp.StatusCode, Equals, libhttp.StatusOK)
+	resp.Body.Close()
+
+	// verify updated continuous query index
+	url = self.formatUrl("/db/db1/continuous_queries?u=root&p=root")
+	resp, err = libhttp.Get(url)
+	c.Assert(err, IsNil)
+	c.Assert(resp.Header.Get("content-type"), Equals, "application/json")
+	body, err = ioutil.ReadAll(resp.Body)
+	c.Assert(err, IsNil)
+	queries = []*coordinator.ContinuousQuery{}
+	err = json.Unmarshal(body, &queries)
+	c.Assert(err, IsNil)
+	c.Assert(queries, DeepEquals, []*coordinator.ContinuousQuery{
+		&coordinator.ContinuousQuery{1, "select * from foo into bar;"},
+		&coordinator.ContinuousQuery{2, "select * from quu into qux;"},
+	})
+	resp.Body.Close()
+
+	// delete the newly-created query
+	url = self.formatUrl("/db/db1/continuous_queries/2?u=root&p=root")
+	req, err := libhttp.NewRequest("DELETE", url, nil)
+	c.Assert(err, IsNil)
+	resp, err = libhttp.DefaultClient.Do(req)
+	c.Assert(err, IsNil)
+	_, err = ioutil.ReadAll(resp.Body)
+	c.Assert(err, IsNil)
+	c.Assert(resp.StatusCode, Equals, libhttp.StatusOK)
+	resp.Body.Close()
+
+	// verify updated continuous query index
+	url = self.formatUrl("/db/db1/continuous_queries?u=root&p=root")
+	resp, err = libhttp.Get(url)
+	c.Assert(err, IsNil)
+	c.Assert(resp.Header.Get("content-type"), Equals, "application/json")
+	body, err = ioutil.ReadAll(resp.Body)
+	c.Assert(err, IsNil)
+	queries = []*coordinator.ContinuousQuery{}
+	err = json.Unmarshal(body, &queries)
+	c.Assert(err, IsNil)
+	c.Assert(queries, DeepEquals, []*coordinator.ContinuousQuery{
+		&coordinator.ContinuousQuery{1, "select * from foo into bar;"},
+	})
+	resp.Body.Close()
 }

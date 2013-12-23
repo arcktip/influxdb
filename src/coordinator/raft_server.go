@@ -158,6 +158,18 @@ func (s *RaftServer) CreateRootUser() error {
 	return s.SaveClusterAdminUser(u)
 }
 
+func (s *RaftServer) CreateContinuousQuery(db string, query string) error {
+	command := NewCreateContinuousQueryCommand(db, query)
+	_, err := s.doOrProxyCommand(command, "create_cq")
+	return err
+}
+
+func (s *RaftServer) DeleteContinuousQuery(db string, id uint32) error {
+	command := NewDeleteContinuousQueryCommand(db, id)
+	_, err := s.doOrProxyCommand(command, "delete_cq")
+	return err
+}
+
 func (s *RaftServer) ActivateServer(server *ClusterServer) error {
 	return errors.New("not implemented")
 }

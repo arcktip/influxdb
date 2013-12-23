@@ -58,11 +58,14 @@ func NewCoordinatorImpl(datastore datastore.Datastore, raftServer ClusterConsens
 // Distributes the query across the cluster and combines the results. Yields as they come in ensuring proper order.
 // TODO: make this work even if there is a downed server in the cluster
 func (self *CoordinatorImpl) DistributeQuery(user common.User, db string, query *parser.SelectQuery, localOnly bool, yield func(*protocol.Series) error) error {
+	queryString := query.GetQueryString()
+	if query.IsContinuousQuery() {
+		self.raftServer.CreateContinuousQuery(db, queryString)
+	}
 	if self.clusterConfiguration.IsSingleServer() || localOnly {
 		return self.datastore.ExecuteQuery(user, db, query, yield, nil)
 	}
 	servers, replicationFactor := self.clusterConfiguration.GetServersToMakeQueryTo(&db)
-	queryString := query.GetQueryString()
 	id := atomic.AddUint32(&self.requestId, uint32(1))
 	userName := user.GetName()
 	responseChannels := make([]chan *protocol.Response, 0, len(servers)+1)
@@ -644,6 +647,39 @@ func (self *CoordinatorImpl) proxyWrite(clusterServer *ClusterServer, request *p
 	} else {
 		return errors.New(response.GetErrorMessage())
 	}
+}
+
+func (self *CoordinatorImpl) CreateContinuousQuery(user common.User, db string, query string) error {
+	if !user.IsClusterAdmin() && !user.IsDbAdmin(db) {
+		return common.NewAuthorizationError("Insufficient permission to create continuous query")
+	}
+
+	err := self.raftServer.CreateContinuousQuery(db, query)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (self *CoordinatorImpl) DeleteContinuousQuery(user common.User, db string, id uint32) error {
+	if !user.IsClusterAdmin() && !user.IsDbAdmin(db) {
+		return common.NewAuthorizationError("Insufficient permission to delete continuous query")
+	}
+
+	err := self.raftServer.DeleteContinuousQuery(db, id)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (self *CoordinatorImpl) ListContinuousQueries(user common.User, db string) ([]*ContinuousQuery, error) {
+	if !user.IsClusterAdmin() && !user.IsDbAdmin(db) {
+		return nil, common.NewAuthorizationError("Insufficient permission to list continuous queries")
+	}
+
+	dbs := self.clusterConfiguration.GetContinuousQueries(db)
+	return dbs, nil
 }
 
 func (self *CoordinatorImpl) CreateDatabase(user common.User, db string, replicationFactor uint8) error {

@@ -27,11 +27,18 @@ type ClusterConfiguration struct {
 	dbUsers                    map[string]map[string]*dbUser
 	servers                    []*ClusterServer
 	serversLock                sync.RWMutex
+	continuousQueries          map[string][]*ContinuousQuery
+	continuousQueriesLock      sync.RWMutex
 	hasRunningServers          bool
 	localServerId              uint32
 	ClusterVersion             uint32
 	config                     *configuration.Configuration
 	addedLocalServerWait       chan bool
+}
+
+type ContinuousQuery struct {
+	Id    uint32
+	Query string
 }
 
 type Database struct {
@@ -332,6 +339,52 @@ func (self *ClusterConfiguration) DropDatabase(name string) error {
 
 	delete(self.dbUsers, name)
 	return nil
+}
+
+func (self *ClusterConfiguration) CreateContinuousQuery(db string, query string) error {
+	self.continuousQueriesLock.Lock()
+	defer self.continuousQueriesLock.Unlock()
+
+	if self.continuousQueries == nil {
+		self.continuousQueries = map[string][]*ContinuousQuery{}
+	}
+
+	maxId := uint32(0)
+	for _, query := range self.continuousQueries[db] {
+		if query.Id > maxId {
+			maxId = query.Id
+		}
+	}
+
+	self.continuousQueries[db] = append(self.continuousQueries[db], &ContinuousQuery{maxId + 1, query})
+
+	return nil
+}
+
+func (self *ClusterConfiguration) DeleteContinuousQuery(db string, id uint32) error {
+	self.continuousQueriesLock.Lock()
+	defer self.continuousQueriesLock.Unlock()
+
+	for i, query := range self.continuousQueries[db] {
+		if query.Id == id {
+			q := self.continuousQueries[db]
+			q[len(q)-1], q[i], q = nil, q[len(q)-1], q[:len(q)-1]
+			self.continuousQueries[db] = q
+		}
+	}
+
+	return nil
+}
+
+func (self *ClusterConfiguration) GetContinuousQueries(db string) []*ContinuousQuery {
+	self.continuousQueriesLock.Lock()
+	defer self.continuousQueriesLock.Unlock()
+
+	queries := make([]*ContinuousQuery, 0, len(self.continuousQueries[db]))
+	for _, query := range self.continuousQueries[db] {
+		queries = append(queries, &ContinuousQuery{query.Id, query.Query})
+	}
+	return queries
 }
 
 func (self *ClusterConfiguration) GetDbUsers(db string) (names []string) {

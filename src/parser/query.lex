@@ -64,6 +64,7 @@ static int yycolumn = 1;
 "desc"                    { return DESC; }
 "group"                   { BEGIN(INITIAL); return GROUP; }
 "by"                      { return BY; }
+"into"                    { return INTO; }
 "("                       { yylval->character = *yytext; return *yytext; }
 ")"                       { yylval->character = *yytext; return *yytext; }
 "+"                       { yylval->character = *yytext; return *yytext; }

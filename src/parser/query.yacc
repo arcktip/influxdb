@@ -46,6 +46,7 @@ value *create_expression_value(char *operator, size_t size, ...) {
   value_array*          value_array;
   value*                v;
   from_clause*          from_clause;
+  into_clause*          into_clause;
   query*                query;
   select_query*         select_query;
   delete_query*         delete_query;
@@ -69,7 +70,7 @@ value *create_expression_value(char *operator, size_t size, ...) {
 %lex-param   {void *scanner}
 
 // define types of tokens (terminals)
-%token          SELECT DELETE FROM WHERE EQUAL GROUP BY LIMIT ORDER ASC DESC MERGE INNER JOIN AS LIST SERIES
+%token          SELECT DELETE FROM WHERE EQUAL GROUP BY LIMIT ORDER ASC DESC MERGE INNER JOIN AS LIST SERIES INTO
 %token <string> STRING_VALUE INT_VALUE FLOAT_VALUE TABLE_NAME SIMPLE_NAME REGEX_OP
 %token <string>  NEGATION_REGEX_OP REGEX_STRING INSENSITIVE_REGEX_STRING DURATION
 
@@ -93,6 +94,7 @@ value *create_expression_value(char *operator, size_t size, ...) {
 %type <groupby_clause>  GROUP_BY_CLAUSE
 %type <integer>         LIMIT_CLAUSE
 %type <character>       ORDER_CLAUSE
+%type <into_clause>     INTO_CLAUSE
 %type <limit_and_order> LIMIT_AND_ORDER_CLAUSES
 %type <query>           QUERY
 %type <delete_query>    DELETE_QUERY
@@ -160,7 +162,7 @@ DELETE_QUERY:
         }
 
 SELECT_QUERY:
-        SELECT COLUMN_NAMES FROM_CLAUSE GROUP_BY_CLAUSE WHERE_CLAUSE LIMIT_AND_ORDER_CLAUSES
+        SELECT COLUMN_NAMES FROM_CLAUSE GROUP_BY_CLAUSE WHERE_CLAUSE LIMIT_AND_ORDER_CLAUSES INTO_CLAUSE
         {
           $$ = calloc(1, sizeof(select_query));
           $$->c = $2;
@@ -169,9 +171,10 @@ SELECT_QUERY:
           $$->where_condition = $5;
           $$->limit = $6.limit;
           $$->ascending = $6.ascending;
+          $$->into_clause = $7;
         }
         |
-        SELECT COLUMN_NAMES FROM_CLAUSE WHERE_CLAUSE GROUP_BY_CLAUSE LIMIT_AND_ORDER_CLAUSES
+        SELECT COLUMN_NAMES FROM_CLAUSE WHERE_CLAUSE GROUP_BY_CLAUSE LIMIT_AND_ORDER_CLAUSES INTO_CLAUSE
         {
           $$ = calloc(1, sizeof(select_query));
           $$->c = $2;
@@ -180,6 +183,7 @@ SELECT_QUERY:
           $$->group_by = $5;
           $$->limit = $6.limit;
           $$->ascending = $6.ascending;
+          $$->into_clause = $7;
         }
 
 LIMIT_AND_ORDER_CLAUSES:
@@ -256,6 +260,13 @@ GROUP_BY_CLAUSE:
         |
         {
           $$ = NULL;
+        }
+
+INTO_CLAUSE:
+        INTO TABLE_VALUE
+        {
+          $$ = malloc(sizeof(into_clause));
+          $$->target = $2;
         }
 
 COLUMN_NAMES:

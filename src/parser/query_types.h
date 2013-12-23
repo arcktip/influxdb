@@ -75,9 +75,14 @@ typedef struct {
 } from_clause;
 
 typedef struct {
+  value *target;
+} into_clause;
+
+typedef struct {
   value_array *c;
   from_clause *from_clause;
   groupby_clause *group_by;
+  into_clause *into_clause;
   condition *where_condition;
   int limit;
   char ascending;

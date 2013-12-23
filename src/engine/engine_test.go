@@ -54,6 +54,18 @@ func (self *MockCoordinator) DeleteSeriesData(user common.User, database string,
 	return nil
 }
 
+func (self *MockCoordinator) CreateContinuousQuery(user common.User, db string, query string) error {
+	return nil
+}
+
+func (self *MockCoordinator) DeleteContinuousQuery(user common.User, db string, id uint32) error {
+	return nil
+}
+
+func (self *MockCoordinator) ListContinuousQueries(user common.User, db string) ([]*coordinator.ContinuousQuery, error) {
+	return nil, nil
+}
+
 func (self *MockCoordinator) ListSeries(_ common.User, _ string) ([]*string, error) {
 	return nil, nil
 }

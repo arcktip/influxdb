@@ -614,6 +614,15 @@ func (self *QueryParserSuite) TestIsSinglePointQuery(c *C) {
 	c.Assert(result, Equals, true)
 }
 
+func (self *QueryParserSuite) TestContinuousQueryParsing(c *C) {
+	query := "select * from foo into bar;"
+	q, err := ParseSelectQuery(query)
+	c.Assert(err, IsNil)
+	c.Assert(q.IsContinuousQuery(), Equals, true)
+	clause := q.GetIntoClause()
+	c.Assert(clause.Target, DeepEquals, &Value{"bar", ValueSimpleName, nil, nil})
+}
+
 // TODO:
 // insert into user.events.count.per_day select count(*) from user.events where time<forever group by time(1d)
 // insert into :series_name.percentiles.95 select percentile(95,value) from stats.* where time<forever group by time(1d)
